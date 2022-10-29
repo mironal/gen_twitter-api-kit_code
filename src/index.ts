@@ -4,6 +4,8 @@ import { hideBin } from "yargs/helpers"
 import { genCommand } from "./cmds/gen/gen"
 import { printCommand } from "./cmds/print"
 
+// ex) npm run dev -- gen components.parameters.DmEventExpansionsParameter
+
 const args = yargs(hideBin(process.argv))
   .command("gen <path>", "Generate Swift Code", (yargs) => {
     yargs.positional("path", { type: "string" })
@@ -11,7 +13,6 @@ const args = yargs(hideBin(process.argv))
   .command("print [path]", "Print", (yargs) => {
     yargs.positional("path", { type: "string" })
   })
-  .options({})
   .parseSync()
 
 const jsonPath = "./twitter_v2.json"

@@ -1,5 +1,7 @@
+import { PATH_SEPARATOR } from "./cmds/const"
+
 export const objectByPath = (object: any, path: string) => {
-  const paths = path.split("/")
+  const paths = path.split(PATH_SEPARATOR)
   return paths.reduce((result: any, path) => {
     return result[path]
   }, object)
