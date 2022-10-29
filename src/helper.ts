@@ -10,9 +10,10 @@ export function capitalizeFirstLetter(string: string): string {
 }
 
 // dm_conversation_id -> dmConversationID
+// attachments.poll_ids -> attachmentsPollIDs
 export function snakeCaseToCamelCase(string: string): string {
   return string
-    .split("_")
+    .split(/[_\.]/)
     .map((token, index) => {
       if (index == 0) {
         return token

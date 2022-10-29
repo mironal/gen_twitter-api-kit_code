@@ -1,35 +1,8 @@
-import { Schema } from "inspector"
-import {
-  assert,
-  Infer,
-  number,
-  is,
-  pattern,
-  string,
-  object,
-  boolean,
-  define,
-  array,
-} from "superstruct"
-import { capitalizeFirstLetter, snakeCaseToCamelCase } from "../../helper"
+import { Infer, is, pattern, string, object, boolean } from "superstruct"
+import { snakeCaseToCamelCase } from "../../helper"
 import { CodeGenerator } from "./code_generator"
-
-const EnumArraySchema = object({
-  type: pattern(string(), /array/),
-  description: string(),
-  minItems: number(),
-  uniqueItems: boolean(),
-  items: object({
-    type: string(),
-    enum: array(string()),
-  }),
-  example: array(string()),
-})
-
-type EnumArraySchemaType = Infer<typeof EnumArraySchema>
-
-const enumArraySchema = () =>
-  define<EnumArraySchemaType>("Schema", (value) => is(value, EnumArraySchema))
+import { GenUtil } from "./gen_utils"
+import { enumArraySchema } from "./types"
 
 const FieldParameter = object({
   name: pattern(string(), /.+\.fields$/),
@@ -53,39 +26,24 @@ export class FieldGenerator implements CodeGenerator<FieldParameterType> {
   }
 }
 
-function fieldParameterEnumName(path: string): string {
-  const pathComponent = path.split("/")
-  const last = pathComponent[pathComponent.length - 1]
-  const name = `Twitter${last.replace("Parameter", "")}V2`
-  return name
-}
-
 function gen(path: string, param: FieldParameterType): string {
-  const name = fieldParameterEnumName(path)
+  const name = GenUtil.pathToEnumName(path)
   const enumValues = param.schema.items.enum
   return `/// ${param.description}
 /// ${param.name}
 public enum ${name}: TwitterAPIv2RequestParameter, Hashable {
-${enumValues
-  .map((value) => `    case ${snakeCaseToCamelCase(value)}`)
-  .join("\n")}
+${enumValues.map(GenUtil.toCaseLine).join("\n")}
     case other(String)
 
     public var stringValue: String {
         switch self {
-${enumValues
-  .map(
-    (value) => `        case .${snakeCaseToCamelCase(value)}: return "${value}"`
-  )
-  .join("\n")}
+${enumValues.map(GenUtil.toStringValueLine).join("\n")}
         case .other(let string): return string
         }
     }
 
     public static let all: Set<Self> = [
-${enumValues
-  .map((value) => `        .${snakeCaseToCamelCase(value)},`)
-  .join("\n")}
+${enumValues.map(GenUtil.toAllCaseLine).join("\n")}
     ]
 }
 
