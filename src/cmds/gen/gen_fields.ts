@@ -11,7 +11,7 @@ import {
   define,
   array,
 } from "superstruct"
-import { capitalizeFirstLetter } from "../../helper"
+import { capitalizeFirstLetter, snakeCaseToCamelCase } from "../../helper"
 import { CodeGenerator } from "./code_generator"
 
 const EnumArraySchema = object({
@@ -66,20 +66,26 @@ function gen(path: string, param: FieldParameterType): string {
   return `/// ${param.description}
 /// ${param.name}
 public enum ${name}: TwitterAPIv2RequestParameter, Hashable {
-${enumValues.map((value) => `    case ${value}`).join("\n")}
+${enumValues
+  .map((value) => `    case ${snakeCaseToCamelCase(value)}`)
+  .join("\n")}
     case other(String)
 
     public var stringValue: String {
         switch self {
 ${enumValues
-  .map((value) => `        case .${value}: return "${value}"`)
+  .map(
+    (value) => `        case .${snakeCaseToCamelCase(value)}: return "${value}"`
+  )
   .join("\n")}
         case .other(let string): return string
         }
     }
 
     public static let all: Set<Self> = [
-${enumValues.map((value) => `        .${value},`).join("\n")}       
+${enumValues
+  .map((value) => `        .${snakeCaseToCamelCase(value)},`)
+  .join("\n")}
     ]
 }
 
