@@ -1,4 +1,5 @@
 import { objectByPath } from "../helper"
+import { inspect } from "util"
 
 export async function printCommand(
   openAPI: { [index: string]: unknown },
@@ -10,6 +11,6 @@ export async function printCommand(
   } else {
     console.log("Path:", path)
     const result = objectByPath(openAPI, path)
-    console.log(result)
+    console.log(inspect(result, { depth: null, colors: true }))
   }
 }
