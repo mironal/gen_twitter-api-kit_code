@@ -32,7 +32,6 @@ export class RequestGenerator implements CodeGenerator<RequestSchemeType> {
   }
   generate(path: string, openAPI: RequestSchemeType): string {
     const paths = path.split(".")
-    const requestPath = paths[1]
     const method = paths[2]
     const comments = [
       openAPI.description,
@@ -60,6 +59,7 @@ export class RequestGenerator implements CodeGenerator<RequestSchemeType> {
       .map(toInnerType)
       .filter((v) => v)
 
+    const requestPath = toRequestPath(paths[1], pathParameters)
     return `import Foundation
 
 /// ${comments.join("\n/// ")}
@@ -89,6 +89,19 @@ ${properties.join("\n")}
 }
 `
   }
+}
+
+const toRequestPath = (
+  path: string,
+  pathParameters: ParameterSchemaType[]
+): string => {
+  const result = pathParameters.reduce((path, param) => {
+    return path.replace(
+      `{${param.name}}`,
+      `\\(${GenUtil.toPropertyName(param.name)})`
+    )
+  }, path)
+  return result
 }
 
 const toInitArgLine = (parameter: ParameterSchemaType): string => {
