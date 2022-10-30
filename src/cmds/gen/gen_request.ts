@@ -137,6 +137,13 @@ function toSwiftType(parameter: ParameterSchemaType): string {
   if (parameter.schema.type === "integer") {
     return `Int${optionalString}`
   }
+
+  if (
+    parameter.name === "event_types" &&
+    parameter.schema.items?.enum.includes("MessageCreate")
+  ) {
+    return `Set<TwitterDirectMessageEventTypeV2>${optionalString}`
+  }
   if (parameter.schema.type === "array") {
     if (parameter.$$ref) {
       const type = mapRefToSwiftType(parameter.$$ref)
@@ -153,7 +160,8 @@ function toSwiftType(parameter: ParameterSchemaType): string {
 function toInnerType(parameter: ParameterSchemaType): string | null {
   if (
     parameter.$$ref ||
-    ["string", "integer"].includes(parameter.schema.type)
+    ["string", "integer"].includes(parameter.schema.type) ||
+    ["event_types"].includes(parameter.name)
   ) {
     return null
   }
