@@ -2,10 +2,12 @@ import { objectByPath } from "../../helper"
 import { CodeGenerator } from "./code_generator"
 import { ExpansionParameterGenerator } from "./gen_expansion"
 import { FieldGenerator } from "./gen_fields"
+import { RequestGenerator } from "./gen_request"
 
 const generators: CodeGenerator<unknown>[] = [
   new FieldGenerator(),
   new ExpansionParameterGenerator(),
+  new RequestGenerator(),
 ]
 
 export async function genCommand(

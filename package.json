@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "superstruct": "^0.16.6",
+    "swagger-client": "^3.18.5",
     "yargs": "^17.6.0"
   }
 }

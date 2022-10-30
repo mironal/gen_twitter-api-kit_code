@@ -1,5 +1,4 @@
 import { Infer, is, pattern, string, object, boolean } from "superstruct"
-import { snakeCaseToCamelCase } from "../../helper"
 import { CodeGenerator } from "./code_generator"
 import { GenUtil } from "./gen_utils"
 import { enumArraySchema } from "./types"

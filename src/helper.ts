@@ -10,6 +10,9 @@ export const objectByPath = (object: any, path: string) => {
 export function capitalizeFirstLetter(string: string): string {
   return string.charAt(0).toUpperCase() + string.slice(1)
 }
+export function lowerCaseFirstLetter(string: string): string {
+  return string.charAt(0).toLowerCase() + string.slice(1)
+}
 
 // dm_conversation_id -> dmConversationID
 // attachments.poll_ids -> attachmentsPollIDs
