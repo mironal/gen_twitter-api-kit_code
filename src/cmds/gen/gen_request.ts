@@ -60,7 +60,9 @@ export class RequestGenerator implements CodeGenerator<RequestSchemeType> {
       .map(toInnerType)
       .filter((v) => v)
 
-    return `/// ${comments.join("\n/// ")}
+    return `import Foundation
+
+/// ${comments.join("\n/// ")}
 open class ${name}: TwitterAPIRequest {
 ${innerTypes.length === 0 ? "" : innerTypes.join("\n") + "\n"}
 ${properties.join("\n")}
@@ -90,11 +92,10 @@ ${properties.join("\n")}
 }
 
 const toInitArgLine = (parameter: ParameterSchemaType): string => {
-  const optionalString = !!parameter.required ? "" : "?"
   const defaultArg = !!parameter.required ? "" : " = .none"
-  return `${GenUtil.toPropertyName(
-    parameter.name
-  )}${optionalString}${defaultArg}`
+  return `${GenUtil.toPropertyName(parameter.name)}: ${toSwiftType(
+    parameter
+  )}${defaultArg}`
 }
 
 const toInitLine = (parameter: ParameterSchemaType): string => {
@@ -179,14 +180,10 @@ function buildStringEnum(
   const indent = " ".repeat(level)
   return [
     `/// ${description}`,
-    `enum ${GenUtil.simpleNameToType(name)}: String {`,
+    `public enum ${GenUtil.simpleNameToType(name)}: String {`,
     ...items.map(
       (item) => `    case ${lowerCaseFirstLetter(item)} = "${item}"`
     ),
-    "",
-    "    func bind(param: inout [String: Any]) {",
-    `        param["${name}"] = rawValue`,
-    "    }",
     "}",
   ]
     .map((line) => `${indent}${line}`)
