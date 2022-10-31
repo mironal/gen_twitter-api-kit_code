@@ -4,7 +4,8 @@ import {
   ParameterSchemaType,
   RequestBodyAnyOfSchema,
   RequestBodyObjectType,
-  RequestBodySchema,
+  Schema,
+  SchemaType,
 } from "./types"
 import { inspect } from "util"
 import { is } from "superstruct"
@@ -54,6 +55,35 @@ function parameterSchemeToRequestParameterDescriptor(
   }
 }
 
+type NamedSchemaType = SchemaType & { parameterName: string }
+function flattenProperties(
+  properties: SchemaType["properties"],
+  requiredProperties: string[]
+): NamedSchemaType[] {
+  if (!properties) {
+    return []
+  }
+  return Object.entries(properties)
+    .map(([parameterName, prop]) => {
+      if (is(prop, RequestBodyAnyOfSchema)) {
+        return prop.anyOf.flatMap((p) => {
+          return flattenProperties({ [parameterName]: p }, requiredProperties)
+        })
+      } else {
+        if (prop.properties) {
+          return flattenProperties(prop.properties, requiredProperties)
+        }
+        const schema: NamedSchemaType = {
+          parameterName,
+          ...prop,
+          required: requiredProperties,
+        }
+        return [schema]
+      }
+    })
+    .flat()
+}
+
 function requestBodyToRequestParameterDescriptor(
   parameter:
     | RequestBodyObjectType["content"]["application/json"]["schema"]
@@ -62,62 +92,63 @@ function requestBodyToRequestParameterDescriptor(
   if (!parameter) {
     return []
   }
-  if (is(parameter, RequestBodyAnyOfSchema)) {
-    const descriptors: RequestParameterDescriptor[] = parameter.anyOf
-      .map((schema) => {
-        if (!schema.properties) {
-          return []
-        }
-        return Object.entries(schema.properties).map(([name, prop]) => {
-          const swiftType = toSwiftType({
-            name,
-            schema: prop,
-            $$ref: prop.$$ref,
-            required: schema.required?.includes(name),
-          })
-          const descriptor: RequestParameterDescriptor = {
-            propertyComment: prop.description ?? "",
-            propertyName: snakeCaseToCamelCase(name),
-            swiftType,
-            isOptional: !(schema.required ?? []).includes(name),
-            parameterType: prop.type,
-            parameterName: name,
-            in: "json-body",
-            definedType: isDefinedType(swiftType),
-          }
-          return descriptor
-        })
+  const flattenParameters = (() => {
+    return flattenProperties(
+      { $$: parameter },
+      is(parameter, Schema) ? parameter.required ?? [] : []
+    )
+  })()
+  const descriptors: RequestParameterDescriptor[] = flattenParameters
+    .map((prop) => {
+      const swiftType = toSwiftType({
+        name: prop.parameterName,
+        schema: prop,
+        $$ref: prop.$$ref,
+        required: prop.required?.includes(prop.parameterName),
       })
-      .flat()
-      .reduce((result, current) => {
-        // Filter duplicated descriptor.
-        const descriptor = result.find(
-          (d) => d.propertyName === current.propertyName
-        )
-        if (!descriptor) {
-          return [...result, current]
-        }
-        if (descriptor.isOptional === false && current.isOptional) {
-          // Prefer Optional parameter
-          return result.map((d) => {
-            if (d.propertyName === current.propertyName) {
-              return current
-            }
-            return d
-          })
-        }
-        return result
-      }, [] as RequestParameterDescriptor[])
-    return descriptors
-  } else if (is(parameter, RequestBodySchema)) {
-  }
-  console.warn(
-    `Can not convert JSON parameter: ${inspect(parameter, {
-      depth: null,
-      colors: true,
-    })}`
-  )
-  return []
+      const descriptor: RequestParameterDescriptor = {
+        propertyComment: prop.description ?? "",
+        propertyName: snakeCaseToCamelCase(prop.parameterName),
+        swiftType,
+        isOptional: !(prop.required ?? []).includes(prop.parameterName),
+        parameterType: prop.type,
+        parameterName: prop.parameterName,
+        in: "json-body",
+        definedType: isDefinedType(swiftType),
+      }
+      return descriptor
+    })
+    .flat()
+    .sort((a, b) => {
+      // Non null to head
+      if (a.isOptional && !b.isOptional) {
+        return 1
+      }
+      if (!a.isOptional && b.isOptional) {
+        return -1
+      }
+      return 0
+    })
+    .reduce((result, current) => {
+      // Filter duplicated descriptor.
+      const descriptor = result.find(
+        (d) => d.propertyName === current.propertyName
+      )
+      if (!descriptor) {
+        return [...result, current]
+      }
+      if (descriptor.isOptional === false && current.isOptional) {
+        // Prefer Optional parameter
+        return result.map((d) => {
+          if (d.propertyName === current.propertyName) {
+            return current
+          }
+          return d
+        })
+      }
+      return result
+    }, [] as RequestParameterDescriptor[])
+  return descriptors
 }
 
 function isDefinedType(swiftType: string): boolean {
@@ -130,6 +161,9 @@ function toSwiftType(
 ): string {
   const optionalString = !!parameter.required ? "" : "?"
   if (parameter.schema.type === "string") {
+    if (parameter.schema.enum) {
+      return simpleNameToType(parameter.name)
+    }
     return `String${optionalString}`
   }
   if (parameter.schema.type === "integer") {
@@ -151,6 +185,9 @@ function toSwiftType(
       }
     }
     if (parameter.schema.items?.type === "string") {
+      if (parameter.schema.items?.$$ref?.endsWith("UserId")) {
+        return `[String]${optionalString}`
+      }
       return `Set<${simpleNameToType(parameter.name)}>${optionalString}`
     }
 
@@ -158,14 +195,17 @@ function toSwiftType(
       const props = Object.entries(parameter.schema.items.properties)
       // Simple array of string
       if (props.length === 1) {
-        if (props[0][1].type === "string") {
+        if (is(props[0][1], Schema) && props[0][1].type === "string") {
           return `[String]${optionalString}`
         }
       }
     }
   }
 
-  console.warn(inspect(parameter, { depth: null, colors: true }))
+  console.warn(
+    "Can not resolve type:",
+    inspect(parameter, { depth: null, colors: true })
+  )
   return `Can not resolve: ${parameter.name}`
 }
 const mapRefToSwiftType = (ref: string) => {

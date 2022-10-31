@@ -166,6 +166,7 @@ function toClassName(method: string, operationId: string): string {
     operationId
       // for Direct Messsage
       .replace(/EventIdCreate$/, "")
+      .replace(/IdCreate$/, "")
   )
 
   const name = capitalizeFirstLetter(`${prefix}${operation}RequestV2`)

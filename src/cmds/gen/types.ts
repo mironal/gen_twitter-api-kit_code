@@ -15,7 +15,6 @@ import {
   union,
   lazy,
   Describe,
-  literal,
 } from "superstruct"
 
 export const SecuritySchema = record(
@@ -26,10 +25,11 @@ export type SecuritySchemaType = Infer<typeof SecuritySchema>
 export const securitySchema = () =>
   define<SecuritySchemaType>("Security", (value) => is(value, SecuritySchema))
 
-type SchemaType = {
+export type SchemaType = {
   type: "object" | "array" | "integer" | "string" | "boolean"
   minimum?: number
   maximum?: number
+  maxItems?: number
   minItems?: number
   uniqueItems?: boolean
   items?: SchemaType
@@ -42,9 +42,10 @@ type SchemaType = {
   minLength?: number
   pattern?: string
   properties?: {
-    [index: string]: SchemaType
+    [index: string]: SchemaType | RequestBodyAnyOfSchemaType
   }
   required?: string[]
+  additionalProperties?: boolean
   $$ref?: string // Only parsed object
 }
 
@@ -52,6 +53,7 @@ export const Schema: Describe<SchemaType> = object({
   type: enums(["object", "array", "integer", "string", "boolean"]),
   minimum: optional(number()),
   maximum: optional(number()),
+  maxItems: optional(number()),
   minItems: optional(number()),
   uniqueItems: optional(boolean()),
   items: optional(lazy(() => Schema)),
@@ -66,24 +68,25 @@ export const Schema: Describe<SchemaType> = object({
   properties: optional(
     record(
       string(),
-      lazy(() => Schema)
+      lazy(() => union([Schema, RequestBodyAnyOfSchema]))
     )
   ),
   required: optional(array(string())),
+  additionalProperties: optional(boolean()),
   $$ref: optional(string()), // Only parsed object
 })
-
-export const RequestBodySchema = object()
 
 export const RequestBodyAnyOfSchema = object({
   anyOf: array(Schema),
   $$ref: string(),
 })
 
+export type RequestBodyAnyOfSchemaType = Infer<typeof RequestBodyAnyOfSchema>
+
 export const RequestBodyObject = object({
   content: object({
     "application/json": object({
-      schema: RequestBodyAnyOfSchema,
+      schema: union([RequestBodyAnyOfSchema, Schema]),
     }),
   }),
   required: optional(boolean()),

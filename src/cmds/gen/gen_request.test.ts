@@ -207,3 +207,59 @@ open class PostDmConversationWithUserRequestV2: TwitterAPIRequest {
   expect(generator.canGenerate(object)).toBe(true)
   expect(generator.generate(path, object)).toBe(expectCode)
 })
+
+test("gen paths./2/dm_conversations.post", async () => {
+  const twitterAPI = await load()
+
+  const generator = new RequestGenerator()
+  const path = "paths./2/dm_conversations.post"
+  const object = objectByPath(twitterAPI, path)
+  const expectCode = `import Foundation
+
+/// Creates a new DM Conversation.
+/// Required OAuth 2.0 scopes: dm.write, tweet.read, users.read
+open class PostDmConversationRequestV2: TwitterAPIRequest {
+
+    /// The conversation type that is being created.
+    public let conversationType: ConversationType
+    /// Participants for the DM Conversation.
+    public let participantIDs: [String]
+    /// Attachments to a DM Event.
+    public let attachments: [String]?
+    /// Text of the message.
+    public let text: String?
+
+    public var method: HTTPMethod {
+        return .post
+    }
+
+    public var path: String {
+        return "/2/dm_conversations"
+    }
+
+    public var bodyContentType: BodyContentType {
+      return .json
+    }
+
+    open var parameters: [String: Any] {
+        var p = [String: Any]()
+        #warning("Please write it yourself as it is difficult to generate automatically.")
+        return p
+    }
+
+    public init(
+        conversationType: ConversationType,
+        participantIDs: [String],
+        attachments: [String]? = .none,
+        text: String? = .none
+    ) {
+        self.conversationType = conversationType
+        self.participantIDs = participantIDs
+        self.attachments = attachments
+        self.text = text
+    }
+}
+`
+  expect(generator.canGenerate(object)).toBe(true)
+  expect(generator.generate(path, object)).toBe(expectCode)
+})
