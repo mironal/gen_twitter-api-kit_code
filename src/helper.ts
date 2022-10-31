@@ -1,9 +1,19 @@
+import { inspect } from "util"
 import { PATH_SEPARATOR } from "./cmds/const"
 
 export const objectByPath = (object: any, path: string) => {
   const paths = path.split(PATH_SEPARATOR)
-  return paths.reduce((result: any, path) => {
-    return result[path]
+  return paths.reduce((result: any, p) => {
+    const obj = result[p]
+    if (obj === undefined) {
+      throw new Error(
+        `Object is not include in "${path}": ${inspect(result, {
+          depth: 0,
+          compact: true,
+        })}`
+      )
+    }
+    return obj
   }, object)
 }
 

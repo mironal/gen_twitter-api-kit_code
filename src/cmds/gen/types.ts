@@ -12,6 +12,10 @@ import {
   enums,
   optional,
   any,
+  union,
+  lazy,
+  Describe,
+  literal,
 } from "superstruct"
 
 export const SecuritySchema = record(
@@ -22,18 +26,35 @@ export type SecuritySchemaType = Infer<typeof SecuritySchema>
 export const securitySchema = () =>
   define<SecuritySchemaType>("Security", (value) => is(value, SecuritySchema))
 
-export const Schema = object({
-  type: enums(["object", "array", "integer", "string"]),
+type SchemaType = {
+  type: "object" | "array" | "integer" | "string" | "boolean"
+  minimum?: number
+  maximum?: number
+  minItems?: number
+  uniqueItems?: boolean
+  items?: SchemaType
+  format?: string
+  default?: any
+  example?: any
+  enum?: string[]
+  description?: string
+  maxLength?: number
+  minLength?: number
+  pattern?: string
+  properties?: {
+    [index: string]: SchemaType
+  }
+  required?: string[]
+  $$ref?: string // Only parsed object
+}
+
+export const Schema: Describe<SchemaType> = object({
+  type: enums(["object", "array", "integer", "string", "boolean"]),
   minimum: optional(number()),
   maximum: optional(number()),
   minItems: optional(number()),
   uniqueItems: optional(boolean()),
-  items: optional(
-    object({
-      type: enums(["string"]),
-      enum: array(string()),
-    })
-  ),
+  items: optional(lazy(() => Schema)),
   format: optional(string()),
   default: optional(any()),
   example: optional(any()),
@@ -42,18 +63,28 @@ export const Schema = object({
   maxLength: optional(number()),
   minLength: optional(number()),
   pattern: optional(string()),
-  properties: optional(object()),
-  required: optional(array()),
+  properties: optional(
+    record(
+      string(),
+      lazy(() => Schema)
+    )
+  ),
+  required: optional(array(string())),
   $$ref: optional(string()), // Only parsed object
 })
 
-export type SchemaType = Infer<typeof Schema>
-export const schema = () =>
-  define<SchemaType>("Schema", (value) => is(value, Schema))
+export const RequestBodySchema = object()
+
+export const RequestBodyAnyOfSchema = object({
+  anyOf: array(Schema),
+  $$ref: string(),
+})
 
 export const RequestBodyObject = object({
   content: object({
-    "application/json": object({ schema: schema() }),
+    "application/json": object({
+      schema: RequestBodyAnyOfSchema,
+    }),
   }),
   required: optional(boolean()),
 })
@@ -70,7 +101,7 @@ export const ParameterSchema = object({
   description: string(),
   required: optional(boolean()),
   style: string(),
-  schema: schema(),
+  schema: Schema,
   explode: optional(boolean()),
   example: optional(any()),
   $$ref: optional(string()),

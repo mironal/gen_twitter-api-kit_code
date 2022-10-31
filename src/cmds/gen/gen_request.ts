@@ -1,14 +1,12 @@
 import { array, assert, Infer, is, object, optional, string } from "superstruct"
-import { inspect } from "util"
-import { capitalizeFirstLetter, lowerCaseFirstLetter } from "../../helper"
+import { capitalizeFirstLetter } from "../../helper"
 import { CodeGenerator } from "./code_generator"
 import { GenUtil } from "./gen_utils"
 import {
-  parameterSchema,
-  ParameterSchemaType,
-  requestBodyObject,
-  securitySchema,
-} from "./types"
+  RequestParameterDescriptor,
+  toRequestParameterDescriptor,
+} from "./request_parameter"
+import { parameterSchema, requestBodyObject, securitySchema } from "./types"
 
 const RequestSchema = object({
   security: array(securitySchema()),
@@ -40,31 +38,40 @@ export class RequestGenerator implements CodeGenerator<RequestSchemeType> {
         openAPI.security.find((v) => v.OAuth2UserToken)?.OAuth2UserToken ?? []
       ),
     ].filter((v) => v)
-    const name = `${capitalizeFirstLetter(openAPI.operationId)}RequestV2`
+    const name = toClassName(method, openAPI.operationId)
 
-    const pathParameters = openAPI.parameters.filter((v) => v.in === "path")
-    const queryParameters = openAPI.parameters.filter((v) => v.in === "query")
-    const allParameters = [...pathParameters, ...queryParameters]
+    const pathParameters = openAPI.parameters
+      .filter((v) => v.in === "path")
+      .map((p) => toRequestParameterDescriptor(p))
+    const queryParameters = openAPI.parameters
+      .filter((v) => v.in === "query")
+      .map((p) => toRequestParameterDescriptor(p))
+    const jsonParameters = toRequestParameterDescriptor(
+      openAPI.requestBody?.content["application/json"]
+    )
 
-    const properties = allParameters
-      .map((p) => {
+    const allParameterDescriptors: RequestParameterDescriptor[] = [
+      ...pathParameters,
+      ...queryParameters,
+      ...jsonParameters,
+    ]
+
+    const properties = allParameterDescriptors
+      .map((d) => {
         return [
-          `    /// ${p.description}`,
-          `    public let ${GenUtil.toPropertyName(p.name)}: ${toSwiftType(p)}`,
+          `    /// ${d.propertyComment}`,
+          `    public let ${d.propertyName}: ${d.swiftType}`,
         ]
       })
       .flat()
 
-    const innerTypes = [...pathParameters, ...queryParameters]
-      .map(toInnerType)
-      .filter((v) => v)
-
+    const hasJsonBody = jsonParameters.length > 0
     const requestPath = toRequestPath(paths[1], pathParameters)
     return `import Foundation
 
 /// ${comments.join("\n/// ")}
 open class ${name}: TwitterAPIRequest {
-${innerTypes.length === 0 ? "" : innerTypes.join("\n") + "\n"}
+
 ${properties.join("\n")}
 
     public var method: HTTPMethod {
@@ -74,17 +81,33 @@ ${properties.join("\n")}
     public var path: String {
         return "${requestPath}"
     }
-
+${
+  hasJsonBody
+    ? `
+    public var bodyContentType: BodyContentType {
+      return .json
+    }
+`
+    : ""
+}
     open var parameters: [String: Any] {
         var p = [String: Any]()
-        ${queryParameters.map((p) => `${toBindLine(p)}`).join("\n        ")}
+        ${[...queryParameters]
+          .map((p) => `${toBindLine(p)}`)
+          .join("\n        ")}${
+      hasJsonBody
+        ? `#warning("Please write it yourself as it is difficult to generate automatically.")`
+        : ""
+    }
         return p
     }
 
     public init(
-        ${allParameters.map((p) => toInitArgLine(p)).join(",\n        ")}
+        ${allParameterDescriptors
+          .map((p) => toInitArgLine(p))
+          .join(",\n        ")}
     ) {
-        ${allParameters.map((p) => toInitLine(p)).join("\n        ")}
+        ${allParameterDescriptors.map((p) => toInitLine(p)).join("\n        ")}
     }
 }
 `
@@ -93,120 +116,58 @@ ${properties.join("\n")}
 
 const toRequestPath = (
   path: string,
-  pathParameters: ParameterSchemaType[]
+  pathParameters: RequestParameterDescriptor[]
 ): string => {
   const result = pathParameters.reduce((path, param) => {
-    return path.replace(
-      `{${param.name}}`,
-      `\\(${GenUtil.toPropertyName(param.name)})`
-    )
+    return path.replace(`{${param.parameterName}}`, `\\(${param.propertyName})`)
   }, path)
   return result
 }
 
-const toInitArgLine = (parameter: ParameterSchemaType): string => {
-  const defaultArg = !!parameter.required ? "" : " = .none"
-  return `${GenUtil.toPropertyName(parameter.name)}: ${toSwiftType(
-    parameter
-  )}${defaultArg}`
+const toInitArgLine = ({
+  swiftType,
+  propertyName,
+  isOptional,
+}: RequestParameterDescriptor): string => {
+  const defaultArg = isOptional ? " = .none" : ""
+  return `${propertyName}: ${swiftType}${defaultArg}`
 }
 
-const toInitLine = (parameter: ParameterSchemaType): string => {
-  const propertyName = GenUtil.toPropertyName(parameter.name)
+const toInitLine = ({ propertyName }: RequestParameterDescriptor): string => {
   return `self.${propertyName} = ${propertyName}`
 }
 
-const toBindLine = (parameter: ParameterSchemaType): string => {
-  if (["integer", "string"].includes(parameter.schema.type)) {
-    return `${GenUtil.toPropertyName(parameter.name)}.map { p["${
-      parameter.name
-    }"] = $0 }`
+const toBindLine = ({
+  propertyName,
+  swiftType,
+  parameterName,
+  parameterType,
+  isOptional,
+}: RequestParameterDescriptor): string => {
+  if (["integer", "string"].includes(parameterType)) {
+    return `${propertyName}.map { p["${parameterName}"] = $0 }`
   }
-  const optionalString = !!parameter.required ? "" : "?"
-  return `${GenUtil.toPropertyName(
-    parameter.name
-  )}${optionalString}.bind(param: &p)`
+
+  if (swiftType === "[String]?") {
+    return `${propertyName}.map { p["${parameterName}"] = $0.joined(separator: ",") }`
+  }
+  const optionalString = isOptional ? "?" : ""
+  return `${propertyName}${optionalString}.bind(param: &p)`
 }
 
-const mapRefToSwiftType = (ref: string) => {
-  const field = ref.match(/#\/components\/parameters\/(.+)FieldsParameter/)?.[1]
-  if (typeof field == "string") {
-    return `Twitter${field}FieldsV2`
-  }
-
-  const expansion = ref.match(
-    /#\/components\/parameters\/(.+)ExpansionsParameter/
-  )?.[1]
-  if (typeof expansion === "string") {
-    return `Twitter${expansion}ExpansionsV2`
-  }
-}
-
-function toSwiftType(parameter: ParameterSchemaType): string {
-  const optionalString = !!parameter.required ? "" : "?"
-  if (parameter.schema.type === "string") {
-    return `String${optionalString}`
-  }
-  if (parameter.schema.type === "integer") {
-    return `Int${optionalString}`
-  }
-
-  if (
-    parameter.name === "event_types" &&
-    parameter.schema.items?.enum.includes("MessageCreate")
-  ) {
-    return `Set<TwitterDirectMessageEventTypeV2>${optionalString}`
-  }
-  if (parameter.schema.type === "array") {
-    if (parameter.$$ref) {
-      const type = mapRefToSwiftType(parameter.$$ref)
-      return `Set<${type}>${optionalString}`
-    } else if (parameter.schema.items?.type === "string") {
-      return `Set<${GenUtil.simpleNameToType(parameter.name)}>${optionalString}`
+function toClassName(method: string, operationId: string): string {
+  const prefix: string = (() => {
+    if (operationId.startsWith(method)) {
+      return ""
     }
-  }
+    return method
+  })()
+  const operation = capitalizeFirstLetter(
+    operationId
+      // for Direct Messsage
+      .replace(/EventIdCreate$/, "")
+  )
 
-  console.warn(inspect(parameter, { depth: null, colors: true }))
-  return `Can not resolve: ${parameter.name}`
-}
-
-function toInnerType(parameter: ParameterSchemaType): string | null {
-  if (
-    parameter.$$ref ||
-    ["string", "integer"].includes(parameter.schema.type) ||
-    ["event_types"].includes(parameter.name)
-  ) {
-    return null
-  }
-
-  if (
-    parameter.schema.type === "array" &&
-    parameter.schema.items?.type === "string"
-  ) {
-    return buildStringEnum(
-      parameter.name,
-      parameter.schema.items.enum,
-      parameter.description
-    )
-  }
-  return `Can not build inner type. Please write yourself. (${parameter.name})`
-}
-
-function buildStringEnum(
-  name: string,
-  items: string[],
-  description: string,
-  level: number = 4
-): string {
-  const indent = " ".repeat(level)
-  return [
-    `/// ${description}`,
-    `public enum ${GenUtil.simpleNameToType(name)}: String {`,
-    ...items.map(
-      (item) => `    case ${lowerCaseFirstLetter(item)} = "${item}"`
-    ),
-    "}",
-  ]
-    .map((line) => `${indent}${line}`)
-    .join("\n")
+  const name = capitalizeFirstLetter(`${prefix}${operation}RequestV2`)
+  return name
 }
